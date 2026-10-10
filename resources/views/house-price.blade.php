@@ -168,7 +168,7 @@
     @endisset
 
     <p class="note">
-        Learning project · Laravel + Python + Machine Learning
+        &copy; Deven Punse - Full Stack Developer & AI Engineer
     </p>
 </div>
 </body>

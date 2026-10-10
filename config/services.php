@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    'house_price_api' => [
+    'url' => env(
+        'HOUSE_PRICE_API_URL',
+        'http://127.0.0.1:8000'
+    ),
+],
+
 ];

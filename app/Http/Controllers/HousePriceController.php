@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Client\ConnectionException;
 
 class HousePriceController extends Controller
 {
@@ -13,6 +15,7 @@ class HousePriceController extends Controller
 
     public function predict(Request $request)
     {
+        // Step 1: Validate the form inputs
         $data = $request->validate([
             'location' => ['required', 'string', 'max:100'],
             'area' => ['required', 'numeric', 'min:100', 'max:100000'],
@@ -20,21 +23,49 @@ class HousePriceController extends Controller
             'age' => ['required', 'integer', 'min:0', 'max:200'],
         ]);
 
-        // Temporary educational formula, not a trained ML model.
-        $basePricePerSqFt = 8000;
+        try {
+            // Step 2: Send house details to the Python API
+            $response = Http::timeout(10)->post(
+                rtrim(config('services.house_price_api.url'), '/') . '/predict',
+                [
+                    'area' => (float) $data['area'],
+                    'bedrooms' => (int) $data['bedrooms'],
+                    'age' => (int) $data['age'],
+                ]
+            );
 
-        $bedroomFactor = 1 + (($data['bedrooms'] - 2) * 0.04);
-        $ageFactor = max(0.70, 1 - ($data['age'] * 0.01));
+            // Step 3: Handle errors returned by Python
+            if (!$response->successful()) {
+                return back()
+                    ->withInput()
+                    ->withErrors([
+                        'prediction' => 'Python could not calculate the price. Please try again.',
+                    ]);
+            }
 
-        $estimatedPrice =
-            $data['area']
-            * $basePricePerSqFt
-            * $bedroomFactor
-            * $ageFactor;
+            // Step 4: Read the predicted price from Python
+            $estimatedPrice = $response->json('predicted_price');
 
-        return view('house-price', [
-            'data' => $data,
-            'estimatedPrice' => round($estimatedPrice),
-        ]);
+            if (!is_numeric($estimatedPrice)) {
+                return back()
+                    ->withInput()
+                    ->withErrors([
+                        'prediction' => 'Python returned an invalid prediction.',
+                    ]);
+            }
+
+            // Step 5: Display the prediction on the existing page
+            return view('house-price', [
+                'data' => $data,
+                'estimatedPrice' => round((float) $estimatedPrice),
+            ]);
+
+        } catch (ConnectionException $e) {
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'prediction' => 'Cannot connect to Python. Please check that the Python API is running.',
+                ]);
+        }
     }
 }
